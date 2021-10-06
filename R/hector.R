@@ -3,64 +3,82 @@
 
 #' getIRLContrib
 #'
-#' compute the Irish contribution to global warming based on historical data in ghg_irl
+#' returns Ireland contribution to variables (emissions,concentrations,forcing,GSAT)
 #'
-#' @param scenario_name name of scenario from scenarios A, B, C, D, E
-#' @param rcp_path names of RCP pathway currently RCP29,RCP45,RCP60, RCP85
-#' @param ecs value for equilibrium climate sensitivity (typical 3C)
+#' @param scenario_name national scenario
+#' @param rcp_path pathway (RCP or SSP)
+#' @param ecs equilibrium climate sensitivity
+#' @param kappa vertical ocean diffusivity (default 2.3 cm2/s)
+#' @param alpha_a anthropogenic aerosol scaling (unitless, default value unity)
+#' @param alpha_v volcanic aerosol scaling (unitless, default value unity)
+#' @param C_0 preindustrial co2 concentration (ppmv)
+#' @param beta carbon ferilisation
+#' @param Q_10 soil carbon feedback
+#' @param M0 pre-industrial methane concentration (ppbv)
 #'
-#' @return a tibble year Tgav rcp scenarion
+#' @return tibble containing emissions and Tgav
 #' @export
 #'
 #' @examples
-#' getIRLContrib("A","rcp85",2.9)
-#'
-getIRLContrib <- function(scenario_name,rcp_path,ecs){
+getIRLContrib <- function(scenario_name,rcp_path,ecs=3,kappa=2.3,alpha_a=1,alpha_v=1, C_0 = 276.0897, beta = 0.36 , Q_10 = 2, M0=653){
   #format scenario dataframe
-  scen <- dplyr::filter(scenarios,scenario==scenario_name) %>% dplyr::select(-scenario,-factor)
-  scen <- dplyr::bind_rows(ghg_irl,scen)
+  if( !(rcp_path %in% pathways)) stop(paste("pathway must be in",paste(pathways,collapse=" ")))
+  scen <- dplyr::filter(scenarios_ipcc,scenario==scenario_name) %>% dplyr::select(-scenario,-factor)
+  scen <- dplyr::bind_rows(allgas_irl,scen)
   #scen %>% ggplot(aes(Year,ktCO2e/1e+3,colour=gas)) +  geom_line()
-  scen <- dplyr::left_join(tidyr::expand_grid(year=1745:2100, gas=c("co2","ch4","n2o","lulucf")),scen)
-  scen <- scen %>% dplyr::group_by(gas) %>% dplyr::mutate(ktCO2e=zoo::na.approx(ktCO2e))
+  scen <- dplyr::left_join(tidyr::expand_grid(year=1745:2100, gas=c("co2","ch4","n2o","lulucf","so2")),scen)
+  scen <- scen %>% dplyr::group_by(gas) %>% dplyr::mutate(value=zoo::na.approx(value))
+  scen <- scen %>% dplyr::rowwise() %>% dplyr::mutate(units=gasunits(gas))
   #scen %>% ggplot(aes(Year,ktCO2e/1e+3,fill=gas)) + geom_area()
-  gwps <- tibble::tibble(gas=c("co2","ch4","n2o","lulucf"),gwp=c(1,25,298,1)) #accounting gwp100s
-  scen <- dplyr::inner_join(scen,gwps)
-  scen <- scen %>% dplyr::mutate(kt=ktCO2e/gwp)
   scen <- scen %>% dplyr::arrange(gas)
   scen$gas <- stringr::str_replace(scen$gas,"ch4","CH4_emissions")
   scen$gas <- stringr::str_replace(scen$gas,"co2","ffi_emissions")
   scen$gas <- stringr::str_replace(scen$gas,"n2o","N2O_emissions")
   scen$gas <- stringr::str_replace(scen$gas,"lulucf","luc_emissions")
-  names(scen)[1:2] <- c("year","variable")
-  scen$units <- NA
-  scen <- scen %>% dplyr::mutate(kt=replace(kt,variable=="CH4_emissions",kt/1e+3), units=replace(units,variable=="CH4_emissions","Tg CH4"))
-  scen <- scen %>% dplyr::mutate(kt=replace(kt,variable=="N2O_emissions",0.636*kt/(1e+3)), units=replace(units,variable=="N2O_emissions","Tg N"))
-  scen <- scen %>% dplyr::mutate(kt=replace(kt,variable=="ffi_emissions",kt/(3.67*1e+6)), units=replace(units,variable=="ffi_emissions","Pg C/yr"))
-  scen <- scen %>% dplyr::mutate(kt=replace(kt,variable=="luc_emissions",kt/(3.67*1e+6)), units=replace(units,variable=="luc_emissions","Pg C/yr"))
-  names(scen)[5] <- "value"
-  scen <- scen %>% dplyr::select(year,variable,value,units)
-  #convert to GtC = PgC
-  #co2$GtC <- co2$kt/(3.67*1e+6)
-  #historical file 0.635
-  #n2o$MtN <- n2o$kt/(0.636*1e+3)
-  # 1 g N2O => 2*14/(2*14+16) = 0.636
+  scen$gas <- stringr::str_replace(scen$gas,"so2","SO2_emissions")
+  names(scen)[2] <- c("variable")
+  #change units to Gg S
+  scen <- scen %>% dplyr::rowwise() %>% dplyr::mutate(value = replace(value,variable=="SO2_emissions",value*1000))
   #Tg -> Mt
   #Pg -> Gt
-  rcp_ini <- switch(rcp_path,
-                    "rcp26" = system.file("input/hector_rcp26.ini", package = "hector"),
-                    "rcp45" = system.file("input/hector_rcp45.ini", package = "hector"),
-                    "rcp60" = system.file("input/hector_rcp60.ini", package = "hector") ,
-                    "rcp85" = system.file("input/hector_rcp85.ini", package = "hector")
-  )
+  rcp_ini <- system.file("input/hector_rcp26.ini", package = "hector")
+  # rcp_ini <- switch(rcp_path,
+  #                    "rcp26" = system.file("input/hector_rcp26.ini", package = "hector"),
+  #                   "rcp45" = system.file("input/hector_rcp45.ini", package = "hector"),
+  #                  "rcp60" = system.file("input/hector_rcp60.ini", package = "hector") ,
+  #                 "rcp85" = system.file("input/hector_rcp85.ini", package = "hector")
+  #)
 
   core <- hector::newcore(rcp_ini)
   core_exirl <- hector::newcore(rcp_ini)
   hector::reset(core)
   hector::setvar(core,NA,hector::ECS(),ecs,unit='degC')
-  hector::setvar(core_exirl,NA,hector::ECS(),ecs,unit='degC')
-  hector::run(core)
-  rcp <- tibble::as_tibble(hector::fetchvars(core, 1745:2100, c(hector::FFI_EMISSIONS(),hector::EMISSIONS_CH4(),hector::EMISSIONS_N2O(),hector::LUC_EMISSIONS()),scenario=rcp_path))
+  hector::setvar(core,NA,hector::DIFFUSIVITY(),kappa,unit='cm2/s')
+  hector::setvar(core,NA,hector::AERO_SCALE(),alpha_a,unit='(unitless)')
+  hector::setvar(core,NA,hector::VOLCANIC_SCALE(),alpha_v,unit='(unitless)')
+  hector::setvar(core,NA,hector::PREINDUSTRIAL_CO2(),C_0,unit='ppmv CO2')
+  hector::setvar(core,NA,hector::BETA(),beta,unit='(unitless)')
+  hector::setvar(core,NA,hector::Q10_RH(),Q_10,unit='(unitless)')
+  hector::setvar(core,NA,hector::PREINDUSTRIAL_CH4(),M0,unit='ppbv CH4')
 
+  hector::setvar(core_exirl,NA,hector::ECS(),ecs,unit='degC')
+  hector::setvar(core_exirl,NA,hector::DIFFUSIVITY(),kappa,unit='cm2/s')
+  hector::setvar(core_exirl,NA,hector::AERO_SCALE(),alpha_a,unit='(unitless)')
+  hector::setvar(core_exirl,NA,hector::VOLCANIC_SCALE(),alpha_v,unit='(unitless)')
+  hector::setvar(core_exirl,NA,hector::PREINDUSTRIAL_CO2(),C_0,unit='ppmv CO2')
+  hector::setvar(core_exirl,NA,hector::BETA(),beta,unit='(unitless)')
+  hector::setvar(core_exirl,NA,hector::Q10_RH(),Q_10,unit='(unitless)')
+  hector::setvar(core_exirl,NA,hector::PREINDUSTRIAL_CH4(),M0,unit='ppbv CH4')
+
+  #rcp <- read_csv(paste("~/Policy/CCACBudgets/scenarios/",rcp_path,".csv",sep=""))
+  rcp <- ssps %>% dplyr::filter(pathway==rcp_path)
+  hector::setvar(core,1745:2100,var=hector::FFI_EMISSIONS(), values= dplyr::filter(rcp, variable=="ffi_emissions")$value, unit = "Pg C/yr")
+  hector::setvar(core,1745:2100,var=hector::EMISSIONS_CH4(), values= dplyr::filter(rcp, variable=="CH4_emissions")$value, unit = "Tg CH4")
+  hector::setvar(core,1745:2100,var=hector::EMISSIONS_N2O(), values= dplyr::filter(rcp, variable=="N2O_emissions")$value, unit = "Tg N")
+  hector::setvar(core,1745:2100,var=hector::LUC_EMISSIONS(), values= dplyr::filter(rcp, variable=="luc_emissions")$value, unit = "Pg C/yr")
+  hector::setvar(core,1745:2100,var=hector::EMISSIONS_SO2(), values= dplyr::filter(rcp, variable=="SO2_emissions")$value, unit = "Gg S")
+  hector::run(core)
+  #rcp26 %>% filter(variable %in% c("ffi_emissions","luc_emissions")) %>% ggplot(aes(year,value,colour=variable)) + geom_line() #+ scale_y_continuous(trans="sqrt")
   rcp_exirl <- rcp
   rcp_exirl$scenario <- "rcp_exirl"
   scen <- scen %>% dplyr::rename("irl"=value)
@@ -68,54 +86,90 @@ getIRLContrib <- function(scenario_name,rcp_path,ecs){
   rcp_exirl <- rcp_exirl %>% dplyr::mutate(irl=tidyr::replace_na(irl,0))
   rcp_exirl <- rcp_exirl %>% dplyr::mutate(value=value-irl)
   rcp_exirl <- rcp_exirl %>% dplyr::select(-irl)
+  #rcp26_exirl %>% filter(variable=="ffi_emissions") %>% ggplot(aes(year,value)) + geom_line()
 
-  f1 <- tibble::as_tibble(hector::fetchvars(core,1745:2100,c(hector::FFI_EMISSIONS(),hector::EMISSIONS_CH4(),hector::EMISSIONS_N2O(),hector::LUC_EMISSIONS(),"Tgav"),scenario=rcp_path))[,-1]
+  f1 <- tibble::as_tibble(hector::fetchvars(core,1745:2100,c(hector::FFI_EMISSIONS(),hector::EMISSIONS_CH4(),hector::EMISSIONS_N2O(),hector::LUC_EMISSIONS(),hector::EMISSIONS_SO2(),"Tgav",
+                                             hector::ATMOSPHERIC_CO2(),hector::ATMOSPHERIC_CH4(),hector::ATMOSPHERIC_N2O()),scenario=rcp_path))[,-1]
   #f1 %>% filter(variable=="Tgav") %>% ggplot(aes(year,value)) + geom_line()
   hector::setvar(core_exirl,1745:2100,var=hector::FFI_EMISSIONS(), values= dplyr::filter(rcp_exirl, variable=="ffi_emissions")$value, unit = "Pg C/yr")
   hector::setvar(core_exirl,1745:2100,var=hector::EMISSIONS_CH4(), values= dplyr::filter(rcp_exirl, variable=="CH4_emissions")$value, unit = "Tg CH4")
   hector::setvar(core_exirl,1745:2100,var=hector::EMISSIONS_N2O(), values= dplyr::filter(rcp_exirl, variable=="N2O_emissions")$value, unit = "Tg N")
   hector::setvar(core_exirl,1745:2100,var=hector::LUC_EMISSIONS(), values= dplyr::filter(rcp_exirl, variable=="luc_emissions")$value, unit = "Pg C/yr")
+  hector::setvar(core_exirl,1745:2100,var=hector::EMISSIONS_SO2(), values= dplyr::filter(rcp_exirl, variable=="SO2_emissions")$value, unit = "Gg S")
   #reset(core26)
   hector::run(core_exirl)
   f1 <- f1 %>% dplyr::rename("global"=value)
-  f2 <- tibble::as_tibble(hector::fetchvars(core_exirl,1745:2100,c(hector::FFI_EMISSIONS(),hector::EMISSIONS_CH4(),hector::EMISSIONS_N2O(),hector::LUC_EMISSIONS(),"Tgav"),scenario=paste(rcp_path,"exirl",sep="_")))[,-1]
+  f2 <- tibble::as_tibble(hector::fetchvars(core_exirl,1745:2100,c(hector::FFI_EMISSIONS(),hector::EMISSIONS_CH4(),hector::EMISSIONS_N2O(),hector::LUC_EMISSIONS(),"Tgav",
+                                                   hector::ATMOSPHERIC_CO2(),hector::ATMOSPHERIC_CH4(),hector::ATMOSPHERIC_N2O()),scenario=paste(rcp_path,"exirl",sep="_")))[,-1]
   f2 <- f2 %>% dplyr::rename("global_exirl"=value)
   f <- dplyr::inner_join(f1,f2)
-  f <- f %>% dplyr::mutate(diff=global-global_exirl)
+  f <- f %>% dplyr::mutate(ireland=global-global_exirl)
   #f1 %>% filter(year=="2050") %>% print.data.frame()
   #f2 %>% filter(year=="2050") %>% print.data.frame()
   f$scenario <- scenario_name
   f$pathway <- rcp_path
   f$ecs <- ecs
-  print(paste("ECS =",hector::fetchvars(core,NA,hector::ECS())$value))
+  f <- f %>% dplyr::select(pathway,scenario,variable,year,global,ireland,units)
+  #print(paste("ECS =",hector::fetchvars(core,NA,hector::ECS())$value))
   hector::shutdown(core)
   hector::shutdown(core_exirl)
   return(f)
 }
 
 
-#' scenarioMatrix
+
+
+
+#' getIRL_dGSAT
 #'
-#' combined national and 4 global scenarios from AR4
+#' Ireland contribution to GSAT (global-mean surface air temperature)
+#' wrapper function based on getIRLContrib
 #'
-#' @param scenarios scenarios data frame
-#' @param ecs_0 climate sensitivity
+#' @param scenario_name national scenario
+#' @param rcp_path pathway (RCP or SSP)
+#' @param ecs equilibrium climate sensitivity
+#' @param kappa vertical ocean diffusivity (default 2.3 cm2/s)
+#' @param alpha_a anthropogenic aerosol scaling (unitless, default value unity)
+#' @param alpha_v volcanic aerosol scaling (unitless, default value unity)
+#' @param C_0 preindustrial co2 concentration (ppmv)
+#' @param beta carbon ferilisation
+#' @param Q_10 soil carbon feedback
+#' @param M0 pre-industrial methane concentration (ppbv)
 #'
-#' @return data frame : year, variable, global value, units, global value excluding Ireland, national contributin, national scenario, global scenario, ecs
+#' @return tibble
 #' @export
 #'
 #' @examples
-#' scenarioMatrix(scenarios,2.9)
+getIRL_dGSAT <- function(scenario_name,rcp_path,ecs=3,kappa=2.3,alpha_a=1,alpha_v=1,C_0=276.0897,beta=0.36,Q_10=2,M0=653){
+
+  res <- getIRLContrib(scenario_name,rcp_path,ecs,kappa,alpha_a,alpha_v,C_0,beta,Q_10) %>% filter(variable=="Tgav") %>% select(-variable,-units)
+  res$kappa <- kappa
+  res$alpha_a <- alpha_a
+  res$alpha_v <- alpha_v
+  res$C_0 <- C_0
+  res$beta <- beta
+  res$Q_10 <- Q_10
+  return(res)
+
+}
+
+
+#' IPCC emissions unit lookup
 #'
-scenarioMatrix <- function(scenarios, ecs_0){
-  scenario_names <- scenarios$scenario %>% unique()
-  d1 <- lapply(scenario_names,function(s) getIRLContrib(s,"rcp26",ecs_0)) %>% dplyr::bind_rows()
-  d2 <- lapply(scenario_names,function(s) getIRLContrib(s,"rcp45",ecs_0)) %>% dplyr::bind_rows()
-  d3 <- lapply(scenario_names,function(s) getIRLContrib(s,"rcp60",ecs_0)) %>% dplyr::bind_rows()
-  d4 <- lapply(scenario_names,function(s) getIRLContrib(s,"rcp85",ecs_0)) %>% dplyr::bind_rows()
-#https://advances.sciencemag.org/content/6/26/eaba1981 ecs range 1.8 to 5.6
-res <- dplyr::bind_rows(d1,d2,d3,d4)
-return(res)
+#' @param gas name - co2, ch4, n20, lulucf, so2
+#'
+#' @return unit
+#' @export
+#'
+#' @examples
+gasunits <- function(gas){
+  #NB fair has Tg S units
+  switch(gas,
+         "co2"="Pg C/yr",
+         "ch4"= "Tg CH4",
+         "n2o"= "Tg N",
+         "lulucf"= "Pg C/yr",
+         "so2"= "Gg S")
 }
 
 

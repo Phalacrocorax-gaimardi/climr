@@ -3,15 +3,15 @@
 \docType{data}
 \name{scenarios}
 \alias{scenarios}
-\title{Sample greenhouse gas emission scenarios for Ireland 2025,2030,2035,2050 & 2100}
+\title{Multi-gas emissions scenarios for Ireland}
 \format{
-A data frame with 1100 rows and 3 variables:
+A data frame with 100 rows and 5 variables:
 \describe{
 \item{scenario}{scenario name}
-\item{gas}{wmghg}
+\item{gas}{wmghg. co2 = co2-fossil lulucf = co2-land}
 \item{year}{year}
-\item{factor}{fraction of 2018 emissions in year}
-\item{ktCO2e}{emissions in year expressed in ktCO2-eq using AR4 GWP$_{100}$ values (i.e. ch4 25, n20 298 )}
+\item{factor}{fraction of 2018 emissions from EPA}
+\item{ktCO2e}{implied emissions in ktCO2-eq using AR4 GWP100}
 }
 }
 \source{
@@ -21,6 +21,10 @@ A data frame with 1100 rows and 3 variables:
 scenarios
 }
 \description{
-A sample dataset containing annual emissions CO$_2$ (fossil-co2), CH4, N2O and LULUCF (CO2) as a percentage of 2018 emissions.
+Scenarios expressed as fraction of 2018 emissions in 2025, 2030,2035,2050,2100
+Linear interpolation is assumed by climr between these years.
+}
+\details{
+Scenario labels A, B, C, D, E
 }
 \keyword{datasets}

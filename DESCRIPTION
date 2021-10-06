@@ -1,13 +1,15 @@
 Package: climr
-Title: What the Package Does (One Line, Title Case)
+Title: National Contributions to GSAT in Hector Simple Climate Model
 Version: 0.1.0
 Authors@R: 
-    person(given = "First",
-           family = "Last",
-           role = c("aut", "cre"),
-           email = "first.last@example.com",
+    person(given = "X",
+           family = "Y",
+           role = "aut",
+           email = "X.Y@example.com",
            comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
+Description: This package calculates the contribution of Ireland to past and future warming. The user specifies a global mitigation scenario and 
+domestic scenario. For example, domestic scenario "E" has a 51% cut in fossil-co2 by 2030, net zero fossil-co2 by 2050, while methane emissions are 
+40% lower in 2050. 
 License: MIT + file LICENSE
 Suggests: 
     testthat
